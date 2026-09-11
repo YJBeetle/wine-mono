@@ -1,8 +1,8 @@
-name: x86 engine baseline
+name: x86 engine stdcall candidate
 
 on:
   push:
-    branches: [ codex/mono-11.3.0-x86-baseline ]
+    branches: [ codex/mono-11.3.0-x86-stdcall ]
   workflow_dispatch:
 
 permissions:
@@ -14,17 +14,17 @@ jobs:
     timeout-minutes: 60
     steps:
     - uses: actions/checkout@v4
-    - name: Check out the release engine
+    - name: Check out the candidate engine
       run: |
-        test "$(git rev-parse HEAD:mono)" = 73610cc7350b7b51dd3bde3323a8ae28eaf5f7fc
+        test "$(git rev-parse HEAD:mono)" = 568c710c2cb4fcfb0c65885419c3dd4666aadcf7
         git submodule init mono
-        git config submodule.mono.url https://github.com/wine-mono/mono.git
+        git config submodule.mono.url https://github.com/YJBeetle/mono.git
         git submodule update --init --recursive --depth 1 mono
     - name: Install build dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool-bin gettext cmake build-essential python3 pkg-config
-    - name: Build the unmodified x86 engine
+    - name: Build the candidate x86 engine
       shell: bash
       run: |
         set -o pipefail
@@ -36,7 +36,7 @@ jobs:
     - name: Upload engine
       uses: actions/upload-artifact@v4
       with:
-        name: mono-11.3.0-x86-baseline
+        name: mono-11.3.0-x86-stdcall
         if-no-files-found: error
         path: |
           image/bin/libmono-2.0-x86.dll

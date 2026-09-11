@@ -62,6 +62,8 @@ jobs:
         tar -xf regression/runtime.tar.xz -C regression/runtime
         mono_root=$(dirname "$(dirname "$(find regression/runtime -name libmono-2.0-x86.dll -print -quit)")")
         test -f "$mono_root/lib/mono/4.5/mscorlib.dll"
+        cp "$mono_root/bin/libmono-2.0-x86.dll" regression/baseline-x86.dll
+        sha256sum regression/baseline-x86.dll image/bin/libmono-2.0-x86.dll > regression/engine-checksums.log
         cp image/bin/libmono-2.0-x86.dll "$mono_root/bin/libmono-2.0-x86.dll"
         printf '%s\n' "$PWD/$mono_root" > regression/runtime-path.txt
     - name: Run the upstream test under Wine

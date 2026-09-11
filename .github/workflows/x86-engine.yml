@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Check out the candidate engine
       run: |
-        test "$(git rev-parse HEAD:mono)" = 6eda363b409abb21a523478c8263db2c3d1f2d66
+        test "$(git rev-parse HEAD:mono)" = 98e9f24ed64b4f38f0792e5dc795d40bd64e2d33
         git submodule init mono
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
         git submodule update --init --depth 1 mono

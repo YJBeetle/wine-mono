@@ -19,7 +19,10 @@ jobs:
         test "$(git rev-parse HEAD:mono)" = 568c710c2cb4fcfb0c65885419c3dd4666aadcf7
         git submodule init mono
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
-        git submodule update --init --recursive --depth 1 mono
+        git submodule update --init --depth 1 mono
+        git -C mono submodule init
+        git -C mono config submodule.external/reference-assemblies.url https://github.com/wine-mono/reference-assemblies.git
+        git -C mono submodule update --init --recursive --depth 1
     - name: Install build dependencies
       run: |
         sudo apt-get update

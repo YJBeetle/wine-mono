@@ -16,10 +16,20 @@ for variant in baseline candidate; do
         cp image/bin/libmono-2.0-x86.dll "$runtime/bin/libmono-2.0-x86.dll"
     fi
     for mode in interp none; do
-        export WINE_MONO_AOT="$mode"
         log="regression/$variant-$mode.log"
+        if [ "$variant" = baseline ]; then
+            export WINE_MONO_AOT="$mode"
+            command=(wine "$test_exe")
+        else
+            unset WINE_MONO_AOT
+            command=(wine "$runtime/bin/mono-sgen-main.exe")
+            if [ "$mode" = interp ]; then
+                command+=(--interp)
+            fi
+            command+=("$test_exe")
+        fi
         set +e
-        timeout -k 5 60 wine "$test_exe" --run-only native_pointer_call_conventions -v > "$log" 2>&1
+        timeout -k 5 60 "${command[@]}" --run-only native_pointer_call_conventions -v > "$log" 2>&1
         result=$?
         set -e
         cat "$log"

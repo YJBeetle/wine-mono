@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Check out the candidate engine
       run: |
-        test "$(git rev-parse HEAD:mono)" = 1b6b7ce575ef5eb0aa765a5540c3590d90e95d92
+        test "$(git rev-parse HEAD:mono)" = 9bcc7f5a5c7a84204f75f7c0affa395bd2109748
         git submodule init mono
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
         git submodule update --init --depth 1 mono
@@ -62,6 +62,13 @@ jobs:
         tar -xf regression/runtime.tar.xz -C regression/runtime
         mono_root=$(dirname "$(dirname "$(find regression/runtime -name libmono-2.0-x86.dll -print -quit)")")
         test -f "$mono_root/lib/mono/4.5/mscorlib.dll"
+        candidate_host=$(find build/mono-x86/mono/mini -type f -name mono-sgen.exe -print -quit)
+        test -n "$candidate_host"
+        file "$candidate_host" | grep -q 'PE32'
+        objdump -p "$candidate_host" | grep 'DLL Name'
+        cp "$candidate_host" "$mono_root/bin/mono-sgen-main.exe"
+        cp image/bin/libmono-2.0-x86.dll "$mono_root/bin/libmonosgen-2.0.dll"
+        cp regression/tests/tests-x86/libtest.dll "$mono_root/bin/libtest.dll"
         cp "$mono_root/bin/libmono-2.0-x86.dll" regression/baseline-x86.dll
         sha256sum regression/baseline-x86.dll image/bin/libmono-2.0-x86.dll > regression/engine-checksums.log
         cp image/bin/libmono-2.0-x86.dll "$mono_root/bin/libmono-2.0-x86.dll"

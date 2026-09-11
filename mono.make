@@ -31,7 +31,7 @@ $$(BUILDDIR)/mono-$(1)/mono/%/.built: $$(BUILDDIR)/mono-$(1)/Makefile $$(MONO_MO
 $$(BUILDDIR)/mono-$(1)/mono/metadata/.built: $$(BUILDDIR)/mono-$(1)/mono/culture/.built $$(BUILDDIR)/mono-$(1)/mono/zlib/.built
 
 $$(BUILDDIR)/mono-$(1)/mono/mini/.built: $$(BUILDDIR)/mono-$(1)/mono/metadata/.built $$(BUILDDIR)/mono-$(1)/mono/sgen/.built $$(BUILDDIR)/mono-$(1)/mono/utils/.built $$(BUILDDIR)/mono-$(1)/mono/eglib/.built 
-	+WINEPREFIX=/dev/null $$(MINGW_ENV) $$(MAKE) -C $$(BUILDDIR)/mono-$(1)/mono/mini built_sources
+	+WINEPREFIX=/dev/null $$(MINGW_ENV) $$(MAKE) -C $$(BUILDDIR)/mono-$(1)/mono/mini version.h cpu-x86.h
 	+WINEPREFIX=/dev/null $$(MINGW_ENV) $$(MAKE) -C $$(BUILDDIR)/mono-$(1)/mono/mini LDFLAGS="$$(PDB_LDFLAGS_LIBMONO_$(1))" libmonosgen-2.0.la
 	touch "$$@"
 

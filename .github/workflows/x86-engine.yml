@@ -1,0 +1,53 @@
+name: x86 engine baseline
+
+on:
+  push:
+    branches: [ codex/mono-11.3.0-x86-baseline ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check out the release engine
+      run: |
+        test "$(git rev-parse HEAD:mono)" = 73610cc7350b7b51dd3bde3323a8ae28eaf5f7fc
+        git submodule init mono
+        git config submodule.mono.url https://github.com/wine-mono/mono.git
+        git submodule update --init --recursive --depth 1 mono
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake libtool-bin gettext cmake build-essential python3 pkg-config
+    - name: Build the unmodified x86 engine
+      shell: bash
+      run: |
+        set -o pipefail
+        make -j2 libmono-2.0-x86.dll 2>&1 | tee x86-engine-build.log
+        test -s image/bin/libmono-2.0-x86.dll
+        git diff --exit-code --submodule=diff
+        git -C mono diff --exit-code
+        sha256sum image/bin/libmono-2.0-x86.dll > x86-engine-sha256.txt
+    - name: Upload engine
+      uses: actions/upload-artifact@v4
+      with:
+        name: mono-11.3.0-x86-baseline
+        if-no-files-found: error
+        path: |
+          image/bin/libmono-2.0-x86.dll
+          image/bin/libmono-2.0-x86.pdb
+          image/bin/libmono-2.0-x86.dbg
+          x86-engine-sha256.txt
+    - name: Upload build logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: x86-engine-build-logs
+        path: |
+          x86-engine-build.log
+          build/mono-x86/config.log

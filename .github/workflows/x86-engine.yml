@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Check out the candidate engine
       run: |
-        test "$(git rev-parse HEAD:mono)" = 50c8800d806195d7e55813d5cb59fd10b2fb4894
+        test "$(git rev-parse HEAD:mono)" = 1b6b7ce575ef5eb0aa765a5540c3590d90e95d92
         git submodule init mono
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
         git submodule update --init --depth 1 mono
@@ -46,6 +46,38 @@ jobs:
           image/bin/libmono-2.0-x86.pdb
           image/bin/libmono-2.0-x86.dbg
           x86-engine-sha256.txt
+    - name: Install regression test dependencies
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends wine wine32:i386 wine64 xvfb xauth mono-mcs
+    - name: Build the upstream regression test
+      shell: bash
+      run: |
+        set -o pipefail
+        make -j2 OUTDIR="$PWD/regression" "$PWD/regression/tests/tests-x86/libtest.dll" 2>&1 | tee regression-build.log
+        mcs -unsafe -platform:x86 -out:regression/tests/tests-x86/pinvoke2.exe mono/mono/tests/pinvoke2.cs mono/mono/mini/TestDriver.cs mono/mono/mini/TestHelpers.cs
+        curl -fL --retry 3 https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.3.0/wine-mono-11.3.0-x86.tar.xz -o regression/runtime.tar.xz
+        mkdir regression/runtime
+        tar -xf regression/runtime.tar.xz -C regression/runtime
+        mono_root=$(dirname "$(dirname "$(find regression/runtime -name libmono-2.0-x86.dll -print -quit)")")
+        test -f "$mono_root/lib/mono/4.5/mscorlib.dll"
+        cp image/bin/libmono-2.0-x86.dll "$mono_root/bin/libmono-2.0-x86.dll"
+        printf '%s\n' "$PWD/$mono_root" > regression/runtime-path.txt
+    - name: Run the upstream test under Wine
+      shell: bash
+      run: |
+        set -o pipefail
+        xvfb-run -a bash .github/scripts/x86-regression.sh 2>&1 | tee regression-test.log
+    - name: Upload regression logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: x86-regression-logs
+        path: |
+          regression-build.log
+          regression-test.log
+          regression/*.log
     - name: Upload build logs
       if: always()
       uses: actions/upload-artifact@v4

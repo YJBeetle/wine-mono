@@ -19,6 +19,7 @@ jobs:
         test "$(git rev-parse HEAD:mono)" = 9a6c1e951ae923159d76f013898f23d9dcc65598
         git submodule init mono monolite
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
+        git config submodule.monolite.url https://github.com/wine-mono/monolite-binaries.git
         git submodule update --init --depth 1 mono monolite
         git -C mono submodule init
         git -C mono config submodule.external/reference-assemblies.url https://github.com/wine-mono/reference-assemblies.git

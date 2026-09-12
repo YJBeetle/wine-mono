@@ -37,6 +37,10 @@ jobs:
         mkdir -p image/lib/mono/4.5
         make -j2 mscorlib.dll 2>&1 | tee mscorlib-build.log
         test -s image/lib/mono/4.5/mscorlib.dll
+        make -j2 \
+          build/image-support/Microsoft.NET/Framework/v4.0.30319/regasm.exe \
+          build/image-support/Microsoft.NET/Framework64/v4.0.30319/regasm.exe \
+          2>&1 | tee regasm-build.log
         git diff --exit-code --submodule=diff
         git -C mono diff --exit-code
         sha256sum image/lib/mono/4.5/mscorlib.dll > mscorlib-sha256.txt
@@ -62,5 +66,7 @@ jobs:
           mscorlib-sha256.txt
           mono-host-build.log
           mscorlib-build.log
+          regasm-build.log
           registration-services.log
+          registration-test/regasm-*.exe
           registration-test/*.log

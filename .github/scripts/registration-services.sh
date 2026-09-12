@@ -11,8 +11,8 @@ test -f "$candidate_mscorlib"
 
 mkdir -p "$test_root"
 mcs -target:library -out:"$test_root/RegistrationProbe.dll" .github/fixtures/registration-services/RegistrationProbe.cs
-mcs -platform:x86 -out:"$test_root/regasm-x86.exe" tools/regasm/regasm.cs
-mcs -platform:x64 -out:"$test_root/regasm-x86_64.exe" tools/regasm/regasm.cs
+cp build/image-support/Microsoft.NET/Framework/v4.0.30319/regasm.exe "$test_root/regasm-x86.exe"
+cp build/image-support/Microsoft.NET/Framework64/v4.0.30319/regasm.exe "$test_root/regasm-x86_64.exe"
 mcs -platform:x86 -out:"$test_root/verifier-x86.exe" .github/fixtures/registration-services/RegistrationVerifier.cs
 mcs -platform:x64 -out:"$test_root/verifier-x86_64.exe" .github/fixtures/registration-services/RegistrationVerifier.cs
 cp "$candidate_mscorlib" "$runtime_root/lib/mono/4.5/mscorlib.dll"

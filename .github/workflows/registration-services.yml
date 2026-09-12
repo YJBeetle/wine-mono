@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Check out the candidate Mono class library
       run: |
-        test "$(git rev-parse HEAD:mono)" = ea135370dedc93bf457646a05ed7934ec7f6cbc7
+        test "$(git rev-parse HEAD:mono)" = 8bafde5e30c55624f65b44fb2ef27e9c77bb38ca
         git submodule init mono monolite
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
         git config submodule.monolite.url https://github.com/wine-mono/monolite-binaries.git
@@ -34,6 +34,9 @@ jobs:
       run: |
         set -o pipefail
         make -j2 build/mono-unix/.built 2>&1 | tee mono-host-build.log
+        make -C build/mono-unix/mcs/class/corlib run-test \
+          FIXTURE=MonoTests.System.Runtime.InteropServices.RegistrationServicesTest \
+          2>&1 | tee registration-services-unit.log
         mkdir -p image/lib/mono/4.5
         make -j2 mscorlib.dll 2>&1 | tee mscorlib-build.log
         test -s image/lib/mono/4.5/mscorlib.dll
@@ -65,6 +68,7 @@ jobs:
           image/lib/mono/4.5/mscorlib.dll
           mscorlib-sha256.txt
           mono-host-build.log
+          registration-services-unit.log
           mscorlib-build.log
           regasm-build.log
           registration-services.log

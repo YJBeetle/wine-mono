@@ -33,6 +33,7 @@ jobs:
       shell: bash
       run: |
         set -o pipefail
+        make -j2 build/mono-unix/.built 2>&1 | tee mono-host-build.log
         make -j2 mscorlib.dll 2>&1 | tee mscorlib-build.log
         test -s image/lib/mono/4.5/mscorlib.dll
         git diff --exit-code --submodule=diff
@@ -58,6 +59,7 @@ jobs:
         path: |
           image/lib/mono/4.5/mscorlib.dll
           mscorlib-sha256.txt
+          mono-host-build.log
           mscorlib-build.log
           registration-services.log
           registration-test/*.log

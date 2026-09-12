@@ -11,7 +11,11 @@ test -f "$candidate_mscorlib"
 
 mkdir -p "$test_root"
 mcs -target:library -out:"$test_root/RegistrationProbe.dll" .github/fixtures/registration-services/RegistrationProbe.cs
-mcs -out:"$test_root/RegistrationRunner.exe" .github/fixtures/registration-services/RegistrationRunner.cs
+mcs -out:"$test_root/regasm-x86.exe" tools/regasm/regasm.cs
+cp "$test_root/regasm-x86.exe" "$test_root/regasm-x86_64.exe"
+mcs -out:"$test_root/fixuparch.exe" tools/fixuparch.cs
+mono "$test_root/fixuparch.exe" x86 "$test_root/regasm-x86.exe"
+mono "$test_root/fixuparch.exe" x86_64 "$test_root/regasm-x86_64.exe"
 cp "$candidate_mscorlib" "$runtime_root/lib/mono/4.5/mscorlib.dll"
 
 export WINEPREFIX="$test_root/prefix"
@@ -20,25 +24,39 @@ WINEDLLOVERRIDES='mscoree,mshtml=' timeout -k 5 120 wine wineboot -u
 runtime_windows=$(winepath -w "$runtime_root")
 wine reg add 'HKCU\Software\Wine\Mono' /v RuntimePath /t REG_SZ /d "$runtime_windows" /f
 
-runner_windows=$(winepath -w "$test_root/RegistrationRunner.exe")
 probe_windows=$(winepath -w "$test_root/RegistrationProbe.dll")
-WINE_MONO_AOT=none timeout -k 5 120 wine "$runner_windows" register "$probe_windows" > "$test_root/register.log" 2>&1
 
-wine reg query 'HKCR\MonoTests.RegistrationServices.Probe' /reg:32 > "$test_root/progid.log"
-wine reg query 'HKCR\CLSID\{5E4466A3-2BA4-414E-B70B-317D91BE57CC}\InprocServer32' /reg:32 > "$test_root/clsid.log"
-wine reg query 'HKCR\CLSID\{5E4466A3-2BA4-414E-B70B-317D91BE57CC}\MonoRegistrationProbe' /reg:32 > "$test_root/callback.log"
-grep -q 'mscoree.dll' "$test_root/clsid.log"
-grep -q 'MonoTests.RegistrationServices.ProbeObject' "$test_root/clsid.log"
-grep -q 'registered' "$test_root/callback.log"
+test_registration()
+{
+    local architecture=$1
+    local progid_view=$2
+    local clsid_view=$3
+    local regasm_windows
+    regasm_windows=$(winepath -w "$test_root/regasm-$architecture.exe")
 
-WINE_MONO_AOT=none timeout -k 5 120 wine "$runner_windows" unregister "$probe_windows" > "$test_root/unregister.log" 2>&1
-if wine reg query 'HKCR\MonoTests.RegistrationServices.Probe' /reg:32 > "$test_root/progid-after-unregister.log" 2>&1; then
-    echo 'ProgID remains after unregistration' >&2
-    exit 1
-fi
-if wine reg query 'HKCR\CLSID\{5E4466A3-2BA4-414E-B70B-317D91BE57CC}' /reg:32 > "$test_root/clsid-after-unregister.log" 2>&1; then
-    echo 'CLSID remains after unregistration' >&2
-    exit 1
-fi
+    WINE_MONO_AOT=none timeout -k 5 120 wine "$regasm_windows" /silent /codebase "$probe_windows" > "$test_root/register-$architecture.log" 2>&1
+
+    wine reg query 'HKCR\MonoTests.RegistrationServices.Probe' "/reg:$progid_view" > "$test_root/progid-$architecture.log"
+    wine reg query 'HKCR\CLSID\{5E4466A3-2BA4-414E-B70B-317D91BE57CC}\InprocServer32' "/reg:$clsid_view" > "$test_root/clsid-$architecture.log"
+    wine reg query 'HKCR\CLSID\{5E4466A3-2BA4-414E-B70B-317D91BE57CC}\MonoRegistrationProbe' "/reg:$clsid_view" > "$test_root/callback-$architecture.log"
+    grep -q 'mscoree.dll' "$test_root/clsid-$architecture.log"
+    grep -q 'MonoTests.RegistrationServices.ProbeObject' "$test_root/clsid-$architecture.log"
+    grep -q 'RegistrationProbe.dll' "$test_root/clsid-$architecture.log"
+    grep -q 'registered' "$test_root/callback-$architecture.log"
+
+    WINE_MONO_AOT=none timeout -k 5 120 wine "$regasm_windows" /silent /unregister "$probe_windows" > "$test_root/unregister-$architecture.log" 2>&1
+    if wine reg query 'HKCR\MonoTests.RegistrationServices.Probe' "/reg:$progid_view" > "$test_root/progid-after-unregister-$architecture.log" 2>&1; then
+        echo "ProgID remains after $architecture unregistration" >&2
+        exit 1
+    fi
+    if wine reg query 'HKCR\CLSID\{5E4466A3-2BA4-414E-B70B-317D91BE57CC}' "/reg:$clsid_view" > "$test_root/clsid-after-unregister-$architecture.log" 2>&1; then
+        echo "CLSID remains after $architecture unregistration" >&2
+        exit 1
+    fi
+}
+
+# Wine treats HKCR\CLSID as a shared key, while ordinary ProgIDs are redirected.
+test_registration x86 32 64
+test_registration x86_64 64 64
 
 echo 'RegistrationServices integration test passed'

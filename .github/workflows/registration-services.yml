@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Check out the candidate Mono class library
       run: |
-        test "$(git rev-parse HEAD:mono)" = 6263a1005ffaaef263d2dbf0c976a615ac907286
+        test "$(git rev-parse HEAD:mono)" = b67ac40817a49bbae419e45967721565f756e8c3
         git submodule init mono monolite
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
         git config submodule.monolite.url https://github.com/wine-mono/monolite-binaries.git

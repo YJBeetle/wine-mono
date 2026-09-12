@@ -11,11 +11,8 @@ test -f "$candidate_mscorlib"
 
 mkdir -p "$test_root"
 mcs -target:library -out:"$test_root/RegistrationProbe.dll" .github/fixtures/registration-services/RegistrationProbe.cs
-mcs -out:"$test_root/regasm-x86.exe" tools/regasm/regasm.cs
-cp "$test_root/regasm-x86.exe" "$test_root/regasm-x86_64.exe"
-mcs -out:"$test_root/fixuparch.exe" tools/fixuparch.cs
-mono "$test_root/fixuparch.exe" x86 "$test_root/regasm-x86.exe"
-mono "$test_root/fixuparch.exe" x86_64 "$test_root/regasm-x86_64.exe"
+mcs -platform:x86 -out:"$test_root/regasm-x86.exe" tools/regasm/regasm.cs
+mcs -platform:x64 -out:"$test_root/regasm-x86_64.exe" tools/regasm/regasm.cs
 cp "$candidate_mscorlib" "$runtime_root/lib/mono/4.5/mscorlib.dll"
 
 export WINEPREFIX="$test_root/prefix"

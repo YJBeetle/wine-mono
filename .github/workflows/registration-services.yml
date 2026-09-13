@@ -2,7 +2,7 @@ name: RegistrationServices candidate
 
 on:
   push:
-    branches: [ codex/com-registration-main-ci ]
+    branches: [ codex/wine-mono-11.3.0-x86-stdcall-com-registration ]
   workflow_dispatch:
 
 permissions:

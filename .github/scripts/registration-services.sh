@@ -25,6 +25,30 @@ wine reg add 'HKCU\Software\Wine\Mono' /v RuntimePath /t REG_SZ /d "$runtime_win
 
 probe_windows=$(winepath -w "$test_root/RegistrationProbe.dll")
 
+run_corlib_tests()
+{
+    local nunit_console
+    local corlib_tests
+    local nunit_windows
+    local tests_windows
+    local result_windows
+
+    nunit_console=mono/mcs/class/lib/net_4_x-linux/nunit-lite-console.exe
+    corlib_tests=mono/mcs/class/lib/net_4_x/tests/net_4_x_corlib_test.dll
+    test -f "$nunit_console"
+    test -f "$corlib_tests"
+
+    nunit_windows=$(winepath -w "$nunit_console")
+    tests_windows=$(winepath -w "$corlib_tests")
+    result_windows=$(winepath -w "$test_root/corlib-registration-tests.xml")
+    WINE_MONO_AOT=none timeout -k 5 120 wine "$nunit_windows" "$tests_windows" \
+        -test=MonoTests.System.Runtime.InteropServices.RegistrationServicesTest \
+        -format:nunit2 -result:"$result_windows" > "$test_root/corlib-registration-tests.log" 2>&1
+
+    grep -q 'failures="0"' "$test_root/corlib-registration-tests.xml"
+    grep -q 'not-run="0"' "$test_root/corlib-registration-tests.xml"
+}
+
 test_registration()
 {
     local architecture=$1
@@ -41,6 +65,7 @@ test_registration()
     wine reg delete 'HKCR\MonoTests.RegistrationServices.CallbackState' /f
 }
 
+run_corlib_tests
 test_registration x86
 test_registration x86_64
 

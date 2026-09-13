@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Check out the candidate Mono class library
       run: |
-        test "$(git rev-parse HEAD:mono)" = 5e4fc237091d4955c1f6373cba45aa22ffdb4701
+        test "$(git rev-parse HEAD:mono)" = d74783ee87487a0091cc8565b335d51cc936e4a2
         git submodule init mono monolite
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
         git config submodule.monolite.url https://github.com/wine-mono/monolite-binaries.git
@@ -74,3 +74,4 @@ jobs:
           registration-services.log
           registration-test/regasm-*.exe
           registration-test/*.log
+          registration-test/*.xml

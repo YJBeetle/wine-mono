@@ -4,10 +4,12 @@ set -euo pipefail
 test_root="$PWD/registration-test"
 runtime_root=$(dirname "$(dirname "$(find runtime -name libmono-2.0-x86_64.dll -print -quit)")")
 candidate_mscorlib="$PWD/image/lib/mono/4.5/mscorlib.dll"
+candidate_engine="$PWD/image/bin/libmono-2.0-x86.dll"
 
 test -n "$runtime_root"
 test -f "$runtime_root/lib/mono/4.5/mscorlib.dll"
 test -f "$candidate_mscorlib"
+test -f "$candidate_engine"
 
 mkdir -p "$test_root"
 mcs -target:library -out:"$test_root/RegistrationProbe.dll" .github/fixtures/registration-services/RegistrationProbe.cs
@@ -16,6 +18,7 @@ cp build/image-support/Microsoft.NET/Framework64/v4.0.30319/regasm.exe "$test_ro
 mcs -platform:x86 -out:"$test_root/verifier-x86.exe" .github/fixtures/registration-services/RegistrationVerifier.cs
 mcs -platform:x64 -out:"$test_root/verifier-x86_64.exe" .github/fixtures/registration-services/RegistrationVerifier.cs
 cp "$candidate_mscorlib" "$runtime_root/lib/mono/4.5/mscorlib.dll"
+cp "$candidate_engine" "$runtime_root/bin/libmono-2.0-x86.dll"
 
 export WINEPREFIX="$test_root/prefix"
 export WINEDEBUG=-all
@@ -52,21 +55,24 @@ run_corlib_tests()
 test_registration()
 {
     local architecture=$1
+    local mode=$2
+    local log_suffix="$architecture-$mode"
     local regasm_windows
     local verifier_windows
     regasm_windows=$(winepath -w "$test_root/regasm-$architecture.exe")
     verifier_windows=$(winepath -w "$test_root/verifier-$architecture.exe")
 
-    WINE_MONO_AOT=none timeout -k 5 120 wine "$regasm_windows" /silent /codebase "$probe_windows" > "$test_root/register-$architecture.log" 2>&1
-    WINE_MONO_AOT=none timeout -k 5 120 wine "$verifier_windows" registered > "$test_root/verify-register-$architecture.log" 2>&1
+    WINE_MONO_AOT="$mode" timeout -k 5 120 wine "$regasm_windows" /silent /codebase "$probe_windows" > "$test_root/register-$log_suffix.log" 2>&1
+    WINE_MONO_AOT="$mode" timeout -k 5 120 wine "$verifier_windows" registered > "$test_root/verify-register-$log_suffix.log" 2>&1
 
-    WINE_MONO_AOT=none timeout -k 5 120 wine "$regasm_windows" /silent /unregister "$probe_windows" > "$test_root/unregister-$architecture.log" 2>&1
-    WINE_MONO_AOT=none timeout -k 5 120 wine "$verifier_windows" removed > "$test_root/verify-unregister-$architecture.log" 2>&1
+    WINE_MONO_AOT="$mode" timeout -k 5 120 wine "$regasm_windows" /silent /unregister "$probe_windows" > "$test_root/unregister-$log_suffix.log" 2>&1
+    WINE_MONO_AOT="$mode" timeout -k 5 120 wine "$verifier_windows" removed > "$test_root/verify-unregister-$log_suffix.log" 2>&1
     wine reg delete 'HKCR\MonoTests.RegistrationServices.CallbackState' /f
 }
 
 run_corlib_tests
-test_registration x86
-test_registration x86_64
+test_registration x86 interp
+test_registration x86 none
+test_registration x86_64 none
 
 echo 'RegistrationServices integration test passed'

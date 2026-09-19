@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Check out the candidate engine
       run: |
-        test "$(git rev-parse HEAD:mono)" = 764c7bd0f9e3fc4f92e72e19472cd8a57cef9eaa
+        test "$(git rev-parse HEAD:mono)" = 04226a35017ea035f09a109a728490055d1493f6
         git submodule init mono
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
         git submodule update --init --depth 1 mono
@@ -46,6 +46,58 @@ jobs:
           image/bin/libmono-2.0-x86.pdb
           image/bin/libmono-2.0-x86.dbg
           x86-engine-sha256.txt
+    - name: Install regression test dependencies
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends wine wine32:i386 wine64 xvfb xauth mono-mcs
+    - name: Build the upstream regression test
+      shell: bash
+      run: |
+        set -o pipefail
+        make -j2 OUTDIR="$PWD/regression" "$PWD/regression/tests/tests-x86/libtest.dll" 2>&1 | tee regression-build.log
+        mcs -unsafe -platform:x86 -out:regression/tests/tests-x86/pinvoke2.exe mono/mono/tests/pinvoke2.cs mono/mono/mini/TestDriver.cs mono/mono/mini/TestHelpers.cs
+        curl -fL --retry 3 https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.3.0/wine-mono-11.3.0-x86.tar.xz -o regression/runtime.tar.xz
+        mkdir regression/runtime
+        tar -xf regression/runtime.tar.xz -C regression/runtime
+        mono_root=$(dirname "$(dirname "$(find regression/runtime -name libmono-2.0-x86.dll -print -quit)")")
+        test -f "$mono_root/lib/mono/4.5/mscorlib.dll"
+        cp regression/tests/tests-x86/libtest.dll "$mono_root/bin/libtest.dll"
+        cp "$mono_root/bin/libmono-2.0-x86.dll" regression/baseline-x86.dll
+        sha256sum regression/baseline-x86.dll image/bin/libmono-2.0-x86.dll > regression/engine-checksums.log
+        printf '%s\n' "$PWD/$mono_root" > regression/runtime-path.txt
+    - name: Verify Wine Mono export compatibility
+      shell: bash
+      run: |
+        set -o pipefail
+        for variant in baseline candidate; do
+          if [ "$variant" = baseline ]; then
+            dll=regression/baseline-x86.dll
+          else
+            dll=image/bin/libmono-2.0-x86.dll
+          fi
+          objdump -p "$dll" | awk '/\[Ordinal\/Name Pointer\] Table/ { table=1; next } table && /^\[ / { exit } table && /^[[:space:]]*\[[[:space:]]*[0-9]+\]/ { print $NF }' | LC_ALL=C sort -u > "regression/$variant-exports.log"
+          test -s "regression/$variant-exports.log"
+          grep -qx mono_marshal_get_vtfixup_ftnptr "regression/$variant-exports.log"
+          grep -q '^wine_mono_' "regression/$variant-exports.log"
+        done
+        LC_ALL=C comm -23 regression/baseline-exports.log regression/candidate-exports.log > regression/missing-exports.log
+        cat regression/missing-exports.log
+        test ! -s regression/missing-exports.log
+    - name: Run internal-call and P/Invoke regressions under Wine
+      shell: bash
+      run: |
+        set -o pipefail
+        xvfb-run -a bash .github/scripts/x86-regression.sh 2>&1 | tee regression-test.log
+    - name: Upload regression logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: x86-regression-logs
+        path: |
+          regression-build.log
+          regression-test.log
+          regression/*.log
     - name: Upload build logs
       if: always()
       uses: actions/upload-artifact@v4

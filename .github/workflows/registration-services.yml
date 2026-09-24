@@ -19,11 +19,13 @@ jobs:
       run: |
         $compiler = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
         $fixture = Join-Path $env:RUNNER_TEMP 'regasm-empty.dll'
-        & $compiler /nologo /target:library "/out:$fixture" tools/regasm/empty-assembly.cs
+        $fixtureSource = (Resolve-Path 'tools\regasm\empty-assembly.cs').Path
+        $frontendSource = (Resolve-Path 'tools\regasm\regasm.cs').Path
+        & $compiler /nologo /target:library "/out:$fixture" $fixtureSource
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         foreach ($platform in @('x86', 'anycpu')) {
           $frontend = Join-Path $env:RUNNER_TEMP "regasm-$platform.exe"
-          & $compiler /nologo "/platform:$platform" "/out:$frontend" tools/regasm/regasm.cs
+          & $compiler /nologo "/platform:$platform" "/out:$frontend" $frontendSource
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/regasm/test-cli.py --assembly $fixture -- $frontend
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

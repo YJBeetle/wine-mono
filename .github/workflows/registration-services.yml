@@ -1,0 +1,109 @@
+name: RegAsm frontend candidate
+
+on:
+  push:
+    branches: [ codex/regasm-frontend-ci ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-cli:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v4
+    - name: Test the frontend on native .NET Framework
+      shell: pwsh
+      run: |
+        $compiler = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+        $fixture = Join-Path $env:RUNNER_TEMP 'regasm-empty.dll'
+        & $compiler /nologo /target:library "/out:$fixture" tools/regasm/empty-assembly.cs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        foreach ($platform in @('x86', 'anycpu')) {
+          $frontend = Join-Path $env:RUNNER_TEMP "regasm-$platform.exe"
+          & $compiler /nologo "/platform:$platform" "/out:$frontend" tools/regasm/regasm.cs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/regasm/test-cli.py --assembly $fixture -- $frontend
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
+
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check out the candidate Mono class library
+      run: |
+        test "$(git rev-parse HEAD:mono)" = 56fe1db32314946a3be29b07771879260629b67f
+        git submodule init mono monolite
+        git config submodule.mono.url https://github.com/YJBeetle/mono.git
+        git config submodule.monolite.url https://github.com/wine-mono/monolite-binaries.git
+        git submodule update --init --depth 1 mono monolite
+        git -C mono submodule init
+        git -C mono config submodule.external/reference-assemblies.url https://github.com/wine-mono/reference-assemblies.git
+        git -C mono submodule update --init --recursive --depth 1
+    - name: Install build and test dependencies
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends autoconf automake libtool-bin gettext cmake build-essential python3 pkg-config mono-devel wine wine32:i386 wine64 xvfb xauth
+    - name: Build the candidate mscorlib
+      shell: bash
+      run: |
+        set -o pipefail
+        make -j2 build/mono-unix/.built 2>&1 | tee mono-host-build.log
+        make -C mono/mcs/class/corlib run-test \
+          FIXTURE=MonoTests.System.Runtime.InteropServices.RegistrationServicesTest \
+          2>&1 | tee registration-services-logic-unit.log
+        make -C mono/mcs/class/corlib run-test \
+          FIXTURE=MonoTests.System.Runtime.InteropServices.RegistrationServicesRegistryTest \
+          2>&1 | tee registration-services-registry-unit.log
+        mkdir -p image/lib/mono/4.5
+        make -j2 mscorlib.dll 2>&1 | tee mscorlib-build.log
+        test -s image/lib/mono/4.5/mscorlib.dll
+        make check-regasm
+        make -j2 \
+          build/image-support/Microsoft.NET/Framework/v2.0.50727/regasm.exe \
+          build/image-support/Microsoft.NET/Framework64/v2.0.50727/regasm.exe \
+          build/image-support/Microsoft.NET/Framework/v4.0.30319/regasm.exe \
+          build/image-support/Microsoft.NET/Framework64/v4.0.30319/regasm.exe \
+          2>&1 | tee regasm-build.log
+        make -q \
+          build/image-support/Microsoft.NET/Framework/v2.0.50727/regasm.exe \
+          build/image-support/Microsoft.NET/Framework64/v2.0.50727/regasm.exe \
+          build/image-support/Microsoft.NET/Framework/v4.0.30319/regasm.exe \
+          build/image-support/Microsoft.NET/Framework64/v4.0.30319/regasm.exe
+        git diff --exit-code --submodule=diff
+        git -C mono diff --exit-code
+        sha256sum image/lib/mono/4.5/mscorlib.dll > mscorlib-sha256.txt
+    - name: Prepare the released Wine Mono runtime
+      shell: bash
+      run: |
+        curl -fL --retry 3 https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.3.0/wine-mono-11.3.0-x86.tar.xz -o runtime.tar.xz
+        mkdir runtime
+        tar -xf runtime.tar.xz -C runtime
+    - name: Run the registration integration test under Wine
+      shell: bash
+      run: |
+        set -o pipefail
+        xvfb-run -a bash .github/scripts/registration-services.sh 2>&1 | tee registration-services.log
+    - name: Upload candidate and logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: registration-services-candidate
+        if-no-files-found: error
+        path: |
+          image/lib/mono/4.5/mscorlib.dll
+          mscorlib-sha256.txt
+          mono-host-build.log
+          registration-services-logic-unit.log
+          registration-services-registry-unit.log
+          mscorlib-build.log
+          regasm-build.log
+          registration-services.log
+          registration-test/regasm-*.exe
+          registration-test/*.log
+          registration-test/*.xml

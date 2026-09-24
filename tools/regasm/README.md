@@ -13,6 +13,8 @@ implementation. Callback and registry failures can leave partial changes.
 
 ## CLI tests
 
+Run `make check-regasm` in a configured Wine Mono build tree, or compile manually:
+
 Build the frontend and a fixture without COM-visible types:
 
 ```sh

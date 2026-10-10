@@ -29,7 +29,7 @@ test -s "$csc"
 (cd mono/mcs/tools/nunit-lite/NUnitLite &&
  dotnet "$csc" -nologo -target:library -nostdlib+ \
      -r:/usr/lib/mono/4.5/{mscorlib,System,System.Core,System.Xml}.dll \
-     -define:__MOBILE__,TRACE,DEBUG,NET_4_0,CLR_4_0,NUNITLITE \
+    -define:MONO,__MOBILE__,TRACE,DEBUG,NET_4_0,CLR_4_0,NUNITLITE \
      -out:"$root/nunitlite.dll" @nunitlite.dll.sources)
 mcs -platform:"$platform" -r:"$root/nunitlite.dll" -out:"$root/unit.exe" \
     mono/mcs/class/System/Test/Mono.Btls/NativeCallingConventionTest.cs \

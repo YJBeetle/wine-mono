@@ -33,8 +33,11 @@ WINEDLLOVERRIDES='mscoree,mshtml=' timeout -k 5 120 wine wineboot -u
 wine reg add 'HKCU\Software\Wine\Mono' /v RuntimePath /t REG_SZ /d "$(winepath -w "$runtime")" /f
 btls_exe=$(winepath -w "$root/btls.exe")
 runtime_exe=$(winepath -w "$root/runtime.exe")
-der=$(winepath -w "$root/certificate.der")
-pfx=$(winepath -w "$root/certificate.pfx")
+# Avoid File.ReadAllBytes: original x86 interp crashes earlier in
+# BCryptGenRandom during PathInternal initialization. Memory fixtures allow
+# the BTLS comparison to actually reach the native certificate functions.
+der=$(base64 -w 0 "$root/certificate.der")
+pfx=$(base64 -w 0 "$root/certificate.pfx")
 printf 'engine\tmode\ttest\texit\tresult\n' > "$root/summary.txt"
 failures=0
 for engine in official built; do

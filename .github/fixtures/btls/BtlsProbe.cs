@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -19,7 +18,7 @@ public static class BtlsProbe
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode)]
     static extern IntPtr GetModuleHandle(string module);
 
-    static void Managed(string path)
+    static void Managed(string data)
     {
         Type factory = typeof(HttpWebRequest).Assembly.GetType("Mono.Net.Security.MonoTlsProviderFactory", true);
         var method = factory.GetMethod("GetProvider", BindingFlags.Static | BindingFlags.NonPublic,
@@ -29,18 +28,21 @@ public static class BtlsProbe
         string name = (string)provider.GetType().GetProperty("Name").GetValue(provider, null);
         Console.WriteLine("tls-provider=" + name);
         if (name != "btls") throw new Exception("BTLS provider unavailable");
-        using (var certificate = new X509Certificate2(File.ReadAllBytes(path), ""))
+        using (var certificate = new X509Certificate2(Convert.FromBase64String(data), ""))
         {
-            if (certificate.Subject != "CN=WineMonoBtlsProbe" || certificate.Thumbprint.Length != 40)
+            Console.WriteLine("CERTIFICATE_CONSTRUCTOR_RETURNED");
+            // Thumbprint invokes CryptoConfig/file initialization on this old
+            // runtime. Keep that separate from this certificate ABI probe.
+            if (certificate.Subject != "CN=WineMonoBtlsProbe" || certificate.GetRawCertData().Length == 0)
                 throw new Exception("Unexpected certificate content");
             Console.WriteLine("certificate-subject=" + certificate.Subject);
         }
         if (GetModuleHandle(Library) == IntPtr.Zero) throw new Exception("Native BTLS not loaded");
     }
 
-    static void Raw(string path, bool cdecl)
+    static void Raw(string data, bool cdecl)
     {
-        byte[] bytes = File.ReadAllBytes(path);
+        byte[] bytes = Convert.FromBase64String(data);
         IntPtr buffer = Marshal.AllocHGlobal(bytes.Length);
         try
         {

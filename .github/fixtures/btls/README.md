@@ -11,6 +11,13 @@ same when engines are exchanged. Exact checksums and source revisions are
 saved with the results. The v3 source also contains RegistrationServices
 changes, but their managed assemblies are not installed by these tests.
 
+Certificate fixtures are passed as base64 memory data, not loaded by managed
+File.ReadAllBytes. The first CI run showed the original x86 interpreter
+crashing in BCryptGenRandom during file/path initialization, before BTLS;
+the crypto and socket probes deliberately continue to cover those paths
+separately. Thumbprint is also excluded to avoid CryptoConfig/file lookup
+masking the certificate-parse result.
+
 Each API is tested in its own process in JIT (none) and interpreter (interp)
 modes. A failed case does not skip later cases. Real API failures fail CI;
 the deliberately ambiguous native-default ABI probe is a diagnostic control

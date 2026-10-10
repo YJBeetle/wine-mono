@@ -1,0 +1,133 @@
+name: Wine Mono 11.3.0 BTLS Cdecl fix regression
+
+on:
+  push:
+    branches: [ codex/wine-mono-11.3.0-btls-regression ]
+    paths:
+      - '.github/workflows/btls-fix.yml'
+      - '.github/scripts/btls-fix-regression.sh'
+      - '.github/fixtures/btls/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BTLS_BASE_SOURCE: 04226a35017ea035f09a109a728490055d1493f6
+  BTLS_FIXED_SOURCE: 3d53b84efecb2769fa0e65bea3cfe265e6908f1d
+
+jobs:
+  class-library:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check out the matching class-library sources
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD:mono)" = "$BTLS_BASE_SOURCE"
+        git submodule init mono monolite
+        git config submodule.mono.url https://github.com/YJBeetle/mono.git
+        git config submodule.monolite.url https://github.com/wine-mono/monolite-binaries.git
+        git submodule update --init --depth 1 mono monolite
+        git -C mono fetch --depth 2 origin "$BTLS_FIXED_SOURCE"
+        test "$(git -C mono rev-parse "$BTLS_FIXED_SOURCE^")" = "$BTLS_BASE_SOURCE"
+        git -C mono submodule init
+        git -C mono config submodule.external/reference-assemblies.url https://github.com/wine-mono/reference-assemblies.git
+        git -C mono submodule update --init --recursive --depth 1
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends autoconf automake libtool-bin gettext cmake build-essential python3 pkg-config mono-devel
+    - name: Build an unmodified System.dll control
+      shell: bash
+      run: |
+        set -euo pipefail
+        make -j2 build/mono-unix/.built-win32 2>&1 | tee classlib-baseline-build.log
+        mkdir -p btls-classlib/baseline btls-classlib/fixed
+        cp mono/mcs/class/lib/net_4_x-win32/System.dll btls-classlib/baseline/
+        grep -q '^#define HAVE_BTLS 1' build/mono-unix/config.h
+        git -C mono diff --exit-code
+    - name: Build the Cdecl declarations and run the metadata unit test
+      shell: bash
+      run: |
+        set -euo pipefail
+        git -C mono checkout --detach "$BTLS_FIXED_SOURCE"
+        make -j2 System.dll 2>&1 | tee classlib-fixed-build.log
+        cp mono/mcs/class/lib/net_4_x-win32/System.dll btls-classlib/fixed/
+        make -C mono/mcs/class/System HOST_PLATFORM=linux run-test \
+          FIXTURE=MonoTests.Mono.Btls.NativeCallingConventionTest \
+          2>&1 | tee btls-metadata-unit.log
+        git -C mono diff --exit-code
+        printf 'base=%s\nfixed=%s\n' "$BTLS_BASE_SOURCE" "$BTLS_FIXED_SOURCE" > btls-classlib/source-manifest.txt
+        sha256sum btls-classlib/baseline/System.dll btls-classlib/fixed/System.dll > btls-classlib/sha256.txt
+        if cmp -s btls-classlib/baseline/System.dll btls-classlib/fixed/System.dll; then
+          echo 'Fixed System.dll unexpectedly identical to baseline' >&2
+          exit 1
+        fi
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: btls-classlib
+        path: |
+          btls-classlib/
+          classlib-*-build.log
+          btls-metadata-unit.log
+          build/mono-unix/config.h
+          mono/mcs/class/System/TestResult*.xml
+        if-no-files-found: error
+
+  runtime:
+    needs: class-library
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x86_64]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with:
+        name: btls-classlib
+        path: classlib-cache
+    - uses: actions/download-artifact@v4
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        run-id: 38078468319
+        name: btls-pr35-${{ matrix.architecture }}-evidence
+        path: engine-cache
+    - name: Validate immutable engine and class-library provenance
+      shell: bash
+      run: |
+        set -euo pipefail
+        grep -Fxq "revision=$BTLS_BASE_SOURCE" engine-cache/source-manifest.txt
+        grep -Fxq 'source=pr35' engine-cache/source-manifest.txt
+        grep -Fxq 'architecture=${{ matrix.architecture }}' engine-cache/source-manifest.txt
+        grep -q '^#define HAVE_BTLS 1' engine-cache/build/mono-${{ matrix.architecture }}/config.h
+        (cd engine-cache && sha256sum -c engine-sha256.txt)
+        grep -Fxq "base=$BTLS_BASE_SOURCE" classlib-cache/btls-classlib/source-manifest.txt
+        grep -Fxq "fixed=$BTLS_FIXED_SOURCE" classlib-cache/btls-classlib/source-manifest.txt
+        (cd classlib-cache && sha256sum -c btls-classlib/sha256.txt)
+    - name: Install Wine test dependencies
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends wine wine32:i386 wine64 xvfb xauth mono-mcs openssl
+    - name: Compare released, rebuilt-baseline and fixed System.dll
+      shell: bash
+      run: |
+        set -o pipefail
+        xvfb-run -a bash .github/scripts/btls-fix-regression.sh '${{ matrix.architecture }}' 2>&1 | tee btls-fix-regression.log
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: btls-fixed-${{ matrix.architecture }}-evidence
+        if-no-files-found: error
+        path: |
+          btls-fix-regression.log
+          btls-fix-test/*.txt
+          btls-fix-test/*.log
+          engine-cache/source-manifest.txt
+          classlib-cache/btls-classlib/source-manifest.txt

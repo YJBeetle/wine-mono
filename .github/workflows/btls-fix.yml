@@ -8,6 +8,12 @@ on:
       - '.github/scripts/btls-fix-regression.sh'
       - '.github/fixtures/btls/**'
   workflow_dispatch:
+    inputs:
+      classlib_run:
+        description: 'Verified class-library build to reuse (blank rebuilds)'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -16,6 +22,8 @@ permissions:
 env:
   BTLS_BASE_SOURCE: 04226a35017ea035f09a109a728490055d1493f6
   BTLS_FIXED_SOURCE: 3d53b84efecb2769fa0e65bea3cfe265e6908f1d
+  BTLS_TEST_SOURCE: 28ae5119141c3fea6329093c9daa3013c43534e1
+  CLASSLIB_RUN: ${{ github.event_name == 'push' && '38085093813' || inputs.classlib_run }}
 
 jobs:
   class-library:
@@ -24,6 +32,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Check out the matching class-library sources
+      if: env.CLASSLIB_RUN == ''
       run: |
         set -euo pipefail
         test "$(git rev-parse HEAD:mono)" = "$BTLS_BASE_SOURCE"
@@ -37,10 +46,12 @@ jobs:
         git -C mono config submodule.external/reference-assemblies.url https://github.com/wine-mono/reference-assemblies.git
         git -C mono submodule update --init --recursive --depth 1
     - name: Install build dependencies
+      if: env.CLASSLIB_RUN == ''
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends autoconf automake libtool-bin gettext cmake build-essential python3 pkg-config mono-devel
     - name: Build an unmodified System.dll control
+      if: env.CLASSLIB_RUN == ''
       shell: bash
       run: |
         set -euo pipefail
@@ -50,6 +61,7 @@ jobs:
         grep -q '^#define HAVE_BTLS 1' build/mono-unix/config.h
         git -C mono diff --exit-code
     - name: Build the Cdecl declarations and run the metadata unit test
+      if: env.CLASSLIB_RUN == ''
       shell: bash
       run: |
         set -euo pipefail
@@ -66,15 +78,40 @@ jobs:
           echo 'Fixed System.dll unexpectedly identical to baseline' >&2
           exit 1
         fi
+        git -C mono fetch --depth 3 origin "$BTLS_TEST_SOURCE"
+        git -C mono diff --exit-code "$BTLS_FIXED_SOURCE" "$BTLS_TEST_SOURCE" -- . ':!mcs/class/System/Test/Mono.Btls/NativeCallingConventionTest.cs'
+        git -C mono checkout --detach "$BTLS_TEST_SOURCE"
         make -j4 -C mono/mcs/class/System HOST_PLATFORM=linux run-test \
           FIXTURE=MonoTests.Mono.Btls.NativeCallingConventionTest \
           2>&1 | tee btls-metadata-unit.log
+    - name: Download the compiled class libraries
+      if: env.CLASSLIB_RUN != ''
+      uses: actions/download-artifact@v4
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        run-id: ${{ env.CLASSLIB_RUN }}
+        name: btls-classlib
+        path: previous-classlib
+    - name: Verify and reuse only the successful library-build outputs
+      if: env.CLASSLIB_RUN != ''
+      run: |
+        set -euo pipefail
+        grep -Fxq "base=$BTLS_BASE_SOURCE" previous-classlib/btls-classlib/source-manifest.txt
+        grep -Fxq "fixed=$BTLS_FIXED_SOURCE" previous-classlib/btls-classlib/source-manifest.txt
+        grep -q '^#define HAVE_BTLS 1' previous-classlib/build/mono-unix/config.h
+        (cd previous-classlib && sha256sum -c btls-classlib/sha256.txt)
+        cp -R previous-classlib/btls-classlib .
+        printf 'compiled-classlib-run=%s\n' "$CLASSLIB_RUN" > reused-classlib.txt
+        # The prior overall job failed compiling its new test. It is NOT a
+        # passing test gate: the corrected fixture runs under NUnitLite in
+        # every runtime job below, alongside the complete API matrix.
     - uses: actions/upload-artifact@v4
       if: always()
       with:
         name: btls-classlib
         path: |
           btls-classlib/
+          reused-classlib.txt
           classlib-*-build.log
           btls-metadata-unit.log
           build/mono-unix/config.h
@@ -118,6 +155,16 @@ jobs:
         sudo dpkg --add-architecture i386
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends wine wine32:i386 wine64 xvfb xauth mono-mcs openssl
+    - name: Check out the corrected unit fixture and its actual NUnitLite
+      run: |
+        set -euo pipefail
+        git submodule init mono
+        git config submodule.mono.url https://github.com/YJBeetle/mono.git
+        git submodule update --init --depth 1 mono
+        git -C mono fetch --depth 3 origin "$BTLS_TEST_SOURCE"
+        git -C mono diff --exit-code "$BTLS_FIXED_SOURCE" "$BTLS_TEST_SOURCE" -- . ':!mcs/class/System/Test/Mono.Btls/NativeCallingConventionTest.cs'
+        git -C mono checkout --detach "$BTLS_TEST_SOURCE"
+        git -C mono submodule update --init --depth 1 external/nunit-lite
     - name: Compare released, rebuilt-baseline and fixed System.dll
       shell: bash
       run: |
@@ -132,5 +179,6 @@ jobs:
           btls-fix-regression.log
           btls-fix-test/*.txt
           btls-fix-test/*.log
+          btls-fix-test/*.xml
           engine-cache/source-manifest.txt
           classlib-cache/btls-classlib/source-manifest.txt

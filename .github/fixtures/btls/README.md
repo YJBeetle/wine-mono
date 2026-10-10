@@ -63,3 +63,13 @@ export/reimport, invalid input, and a self-signed loopback TLS 1.2 handshake
 must all pass on x86/x64 in both JIT and interpreter modes, as must the wider
 runtime controls. The TLS callback accepts only the generated fixture; this
 does not validate system trust-store policy or external HTTPS services.
+
+Push runs can reuse the successfully compiled System.dll pair from run
+38085093813. That overall job failed when its new test used Assert.Greater,
+which the vendored NUnitLite does not expose. The test-only follow-up uses
+Assert.IsTrue; CI verifies no library implementation changed between those
+source revisions. It compiles the repository's actual NUnitLite and exact
+fixture and executes it in all four Wine runtime modes, requiring one
+executed, successful test case in the XML report (ignored tests fail).
+Prior job status is never used as a passing test gate. Dispatch with a blank
+classlib_run rebuilds the matching class libraries from source.

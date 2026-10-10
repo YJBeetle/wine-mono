@@ -20,18 +20,24 @@ cp "$engine" "$runtime/bin/libmono-2.0-$architecture.dll"
 cp "$native" "$root/libmono-btls-shared.dll"
 sha256sum "$engine" "$native" "$runtime/lib/mono/4.5/mscorlib.dll" \
     "$root/released-System.dll" classlib-cache/btls-classlib/{baseline,fixed}/System.dll > "$root/checksums.txt"
-mcs -platform:"$platform" -out:"$root/btls.exe" .github/fixtures/btls/BtlsProbe.cs
-mcs -platform:"$platform" -r:System.Core -r:System.Xml -out:"$root/runtime.exe" .github/fixtures/btls/RuntimeProbe.cs
+# Target the tested framework, not the runner's distro Mono: for example,
+# Stack<T> lives in System.dll here but in the distro Mono's mscorlib.dll.
+references=()
+for assembly in mscorlib System System.Core System.Xml; do
+    references+=("-r:$runtime/lib/mono/4.5/$assembly.dll")
+done
+mcs -nostdlib "${references[@]}" -platform:"$platform" -out:"$root/btls.exe" .github/fixtures/btls/BtlsProbe.cs
+mcs -nostdlib "${references[@]}" -platform:"$platform" -out:"$root/runtime.exe" .github/fixtures/btls/RuntimeProbe.cs
 # Compile the repository's real NUnitLite and the exact upstream unit fixture,
 # rather than replacing assertions with a stub or relying on distro NUnit APIs.
 csc=$(dotnet --list-sdks | awk '$1 ~ /^8\./ {v=$1; gsub(/[\[\]]/, "", $2); p=$2} END {print p "/" v "/Roslyn/bincore/csc.dll"}')
 test -s "$csc"
 (cd mono/mcs/tools/nunit-lite/NUnitLite &&
  dotnet "$csc" -nologo -target:library -nostdlib+ \
-     -r:/usr/lib/mono/4.5/{mscorlib,System,System.Core,System.Xml}.dll \
-    -define:MONO,__MOBILE__,TRACE,DEBUG,NET_4_0,CLR_4_0,NUNITLITE \
+     "${references[@]}" \
+     -define:MONO,__MOBILE__,TRACE,DEBUG,NET_4_0,CLR_4_0,NUNITLITE \
      -out:"$root/nunitlite.dll" @nunitlite.dll.sources)
-mcs -platform:"$platform" -r:"$root/nunitlite.dll" -out:"$root/unit.exe" \
+mcs -nostdlib "${references[@]}" -platform:"$platform" -r:"$root/nunitlite.dll" -out:"$root/unit.exe" \
     mono/mcs/class/System/Test/Mono.Btls/NativeCallingConventionTest.cs \
     mono/mcs/tools/nunit-lite/nunit-lite-console/Console.cs
 openssl req -x509 -newkey rsa:2048 -nodes -keyout "$root/key.pem" -out "$root/certificate.pem" -days 1 -subj '/CN=WineMonoBtlsProbe'

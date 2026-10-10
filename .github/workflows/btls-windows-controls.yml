@@ -32,14 +32,13 @@ jobs:
         curl.exe -fL --retry 2 --connect-timeout 20 --max-time 120 https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.3.0/wine-mono-11.3.0-x86.tar.xz -o windows-btls-test/runtime.tar.xz
         if ($LASTEXITCODE -ne 0) { throw 'Runtime download failed' }
         $nativeDir = if ('${{ matrix.architecture }}' -eq 'x86') { 'x86' } else { 'x86_64' }
-        Write-Host 'Extract only the requested native DLL, not the entire class library'
-        $entry = @(tar -tf windows-btls-test/runtime.tar.xz | Where-Object { $_ -match "/lib/$nativeDir/libmono-btls-shared\.dll$" })
-        if ($LASTEXITCODE -ne 0 -or $entry.Count -ne 1) { throw 'Native archive entry selection failed' }
-        tar -xf windows-btls-test/runtime.tar.xz -C windows-btls-test/runtime $entry[0]
-        if ($LASTEXITCODE -ne 0) { throw 'Native extraction failed' }
-        $native = Get-ChildItem windows-btls-test/runtime -Recurse -Filter libmono-btls-shared.dll | Where-Object { $_.Directory.Name -eq $nativeDir }
-        if (@($native).Count -ne 1) { throw 'Native BTLS DLL selection ambiguous' }
-        Copy-Item $native.FullName windows-btls-test/libmono-btls-shared.dll
+        Write-Host 'Extract the XZ stream with 7-Zip'
+        $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
+        & $sevenZip x windows-btls-test/runtime.tar.xz -owindows-btls-test -y
+        if ($LASTEXITCODE -ne 0) { throw 'XZ extraction failed' }
+        Write-Host 'Extract only the requested native DLL from TAR'
+        & $sevenZip e windows-btls-test/runtime.tar "wine-mono-11.3.0/lib/$nativeDir/libmono-btls-shared.dll" -owindows-btls-test -y
+        if ($LASTEXITCODE -ne 0 -or !(Test-Path windows-btls-test/libmono-btls-shared.dll)) { throw 'Native extraction failed' }
         Get-FileHash windows-btls-test/libmono-btls-shared.dll -Algorithm SHA256 | Format-List | Out-File windows-btls-test/checksums.txt
         $openssl = 'C:\Program Files\Git\usr\bin\openssl.exe'
         Write-Host 'Generate certificate fixtures'

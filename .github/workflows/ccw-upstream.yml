@@ -1,0 +1,52 @@
+name: CCW upstream focused regression
+
+on:
+  push:
+    branches: [codex/ccw-release-zero-upstream-ci]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  x64-wine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the upstream patch
+        run: |
+          test "$(git rev-parse HEAD:mono)" = ddb607dfffb6c099226b499540a57632e350a193
+          git submodule init mono
+          git config submodule.mono.url https://github.com/YJBeetle/mono.git
+          git submodule update --init --depth 1 mono
+          git -C mono submodule init
+          git -C mono config submodule.external/reference-assemblies.url https://github.com/wine-mono/reference-assemblies.git
+          git -C mono submodule update --init --recursive --depth 1
+      - name: Install build and test dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends autoconf automake libtool-bin gettext cmake build-essential python3 pkg-config wine wine32:i386 wine64 xvfb xauth mono-mcs
+      - name: Build the patched x64 engine
+        shell: bash
+        run: |
+          set -o pipefail
+          make -j2 libmono-2.0-x86_64.dll 2>&1 | tee engine-build.log
+          test -s image/bin/libmono-2.0-x86_64.dll
+          git -C mono diff --exit-code
+      - name: Verify the regression and existing CCW lifetime test
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a bash .github/scripts/ccw-upstream.sh 2>&1 | tee ccw-upstream.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ccw-upstream-evidence
+          path: |
+            engine-build.log
+            ccw-upstream.log
+            ccw-upstream/*.log
+            build/mono-x86_64/config.log
+

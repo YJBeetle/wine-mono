@@ -44,7 +44,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        make -j2 build/mono-unix/.built-win32 2>&1 | tee classlib-baseline-build.log
+        make -j4 build/mono-unix/.built-win32 2>&1 | tee classlib-baseline-build.log
         mkdir -p btls-classlib/baseline btls-classlib/fixed
         cp mono/mcs/class/lib/net_4_x-win32/System.dll btls-classlib/baseline/
         grep -q '^#define HAVE_BTLS 1' build/mono-unix/config.h
@@ -54,11 +54,11 @@ jobs:
       run: |
         set -euo pipefail
         git -C mono checkout --detach "$BTLS_FIXED_SOURCE"
-        make -j2 System.dll 2>&1 | tee classlib-fixed-build.log
+        # Build the source target directly: this test does not install a host GAC.
+        # The top-level System.dll recipe invokes distro gacutil against a custom
+        # Mono configuration, mixing runtimes and failing on System.Native.
+        make -j4 -C mono/mcs/class/System HOST_PLATFORM=win32 2>&1 | tee classlib-fixed-build.log
         cp mono/mcs/class/lib/net_4_x-win32/System.dll btls-classlib/fixed/
-        make -C mono/mcs/class/System HOST_PLATFORM=linux run-test \
-          FIXTURE=MonoTests.Mono.Btls.NativeCallingConventionTest \
-          2>&1 | tee btls-metadata-unit.log
         git -C mono diff --exit-code
         printf 'base=%s\nfixed=%s\n' "$BTLS_BASE_SOURCE" "$BTLS_FIXED_SOURCE" > btls-classlib/source-manifest.txt
         sha256sum btls-classlib/baseline/System.dll btls-classlib/fixed/System.dll > btls-classlib/sha256.txt
@@ -66,6 +66,9 @@ jobs:
           echo 'Fixed System.dll unexpectedly identical to baseline' >&2
           exit 1
         fi
+        make -j4 -C mono/mcs/class/System HOST_PLATFORM=linux run-test \
+          FIXTURE=MonoTests.Mono.Btls.NativeCallingConventionTest \
+          2>&1 | tee btls-metadata-unit.log
     - uses: actions/upload-artifact@v4
       if: always()
       with:

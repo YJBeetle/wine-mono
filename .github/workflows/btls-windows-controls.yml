@@ -22,25 +22,34 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Prepare the released native DLL and certificate fixtures
+      timeout-minutes: 5
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
         New-Item -ItemType Directory -Path windows-btls-test, windows-btls-test/runtime | Out-Null
-        Invoke-WebRequest https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.3.0/wine-mono-11.3.0-x86.tar.xz -OutFile windows-btls-test/runtime.tar.xz
-        tar -xf windows-btls-test/runtime.tar.xz -C windows-btls-test/runtime
-        if ($LASTEXITCODE -ne 0) { throw 'Runtime extraction failed' }
+        Write-Host 'Download the released native library package'
+        curl.exe -fL --retry 2 --connect-timeout 20 --max-time 120 https://github.com/wine-mono/wine-mono/releases/download/wine-mono-11.3.0/wine-mono-11.3.0-x86.tar.xz -o windows-btls-test/runtime.tar.xz
+        if ($LASTEXITCODE -ne 0) { throw 'Runtime download failed' }
         $nativeDir = if ('${{ matrix.architecture }}' -eq 'x86') { 'x86' } else { 'x86_64' }
+        Write-Host 'Extract only the requested native DLL, not the entire class library'
+        $entry = @(tar -tf windows-btls-test/runtime.tar.xz | Where-Object { $_ -match "/lib/$nativeDir/libmono-btls-shared\.dll$" })
+        if ($LASTEXITCODE -ne 0 -or $entry.Count -ne 1) { throw 'Native archive entry selection failed' }
+        tar -xf windows-btls-test/runtime.tar.xz -C windows-btls-test/runtime $entry[0]
+        if ($LASTEXITCODE -ne 0) { throw 'Native extraction failed' }
         $native = Get-ChildItem windows-btls-test/runtime -Recurse -Filter libmono-btls-shared.dll | Where-Object { $_.Directory.Name -eq $nativeDir }
         if (@($native).Count -ne 1) { throw 'Native BTLS DLL selection ambiguous' }
         Copy-Item $native.FullName windows-btls-test/libmono-btls-shared.dll
         Get-FileHash windows-btls-test/libmono-btls-shared.dll -Algorithm SHA256 | Format-List | Out-File windows-btls-test/checksums.txt
         $openssl = 'C:\Program Files\Git\usr\bin\openssl.exe'
+        Write-Host 'Generate certificate fixtures'
         & $openssl req -x509 -newkey rsa:2048 -nodes -keyout windows-btls-test/key.pem -out windows-btls-test/certificate.pem -days 1 -subj /CN=WineMonoBtlsProbe
         if ($LASTEXITCODE -ne 0) { throw 'Certificate generation failed' }
         & $openssl x509 -in windows-btls-test/certificate.pem -outform DER -out windows-btls-test/certificate.der
         if ($LASTEXITCODE -ne 0) { throw 'DER conversion failed' }
         & $openssl pkcs12 -export -legacy -inkey windows-btls-test/key.pem -in windows-btls-test/certificate.pem -out windows-btls-test/certificate.pfx -passout pass:
         if ($LASTEXITCODE -ne 0) { throw 'PFX generation failed' }
+        Write-Host 'Compile the probe using Microsoft NET Framework csc'
         & C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /nologo /platform:${{ matrix.architecture }} /out:windows-btls-test/probe.exe .github/fixtures/windows-btls/WindowsBtlsProbe.cs
         if ($LASTEXITCODE -ne 0) { throw 'Microsoft compiler failed' }
     - name: Run standard APIs and explicit Cdecl; observe default convention separately

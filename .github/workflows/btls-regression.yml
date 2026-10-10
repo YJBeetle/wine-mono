@@ -3,6 +3,13 @@ name: Wine Mono 11.3.0 BTLS and runtime investigation
 on:
   push:
     branches: [ codex/wine-mono-11.3.0-btls-regression ]
+    paths:
+      - '.github/workflows/btls-regression.yml'
+      - '.github/scripts/btls-regression.sh'
+      - '.github/scripts/native-abi-inventory.py'
+      - '.github/fixtures/btls/BtlsProbe.cs'
+      - '.github/fixtures/btls/RuntimeProbe.cs'
+      - 'mono.make'
   workflow_dispatch:
     inputs:
       engine_run:

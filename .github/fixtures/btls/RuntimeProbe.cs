@@ -72,6 +72,13 @@ public static class RuntimeProbe
         Check(doc.SelectSingleNode("/root/item[@id='7']").InnerText == "value");
     }
 
+    static void Oid()
+    {
+        var oid = new Oid("2.5.4.3");
+        Check(!String.IsNullOrEmpty(oid.FriendlyName));
+        Check(new Oid(oid.FriendlyName).Value == "2.5.4.3");
+    }
+
     static void Socket()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -103,6 +110,7 @@ public static class RuntimeProbe
                 case "compression": Compression(); break;
                 case "crypto": Crypto(); break;
                 case "xml": Xml(); break;
+                case "oid": Oid(); break;
                 case "socket": Socket(); break;
                 default: throw new ArgumentException(args[0]);
             }

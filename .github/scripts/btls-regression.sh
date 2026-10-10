@@ -47,15 +47,15 @@ for engine in official built; do
     test "$engine" != built || dll="$PWD/image/bin/libmono-2.0-$architecture.dll"
     cp "$dll" "$runtime/bin/libmono-2.0-$architecture.dll"
     for mode in none interp; do
-        for probe in managed-der managed-pkcs12 native-cdecl native-default internal-calls compression crypto xml socket; do
+        for probe in managed-der managed-pkcs12 native-cdecl native-default internal-calls compression crypto xml oid socket; do
             exe="$btls_exe"; fixture="$der"
             case "$probe" in
                 managed-pkcs12) fixture="$pfx" ;;
-                internal-calls|compression|crypto|xml|socket) exe="$runtime_exe"; fixture="" ;;
+                internal-calls|compression|crypto|xml|oid|socket) exe="$runtime_exe"; fixture="" ;;
             esac
             log="$root/$engine-$mode-$probe.log"
             set +e
-            WINE_MONO_AOT="$mode" timeout -k 5 45 wine "$exe" "$probe" "$fixture" > "$log" 2>&1
+            WINE_MONO_AOT="$mode" timeout -k 5 45 wine "$exe" "$probe" "$fixture" "$der" > "$log" 2>&1
             code=$?
             set -e
             tr -d '\r' < "$log" > "$log.normalized"
@@ -64,7 +64,8 @@ for engine in official built; do
                ! grep -Eq 'Assertion at|Unhandled Exception|Native Crash Reporting' "$log"; then
                 result=PASS
             elif [ "$probe" = native-default ] && grep -Fxq "PROBE_ENTER=$probe" "$log.normalized" &&
-                 grep -Eq 'Native Crash Reporting|Unhandled page fault' "$log"; then
+                 grep -Eq 'Native Crash Reporting|Unhandled page fault' "$log" &&
+                 grep -Fq 'BtlsProbe:ParseDefault' "$log"; then
                 # Deliberately ambiguous ABI: record as a diagnostic negative control,
                 # never mask failures of real managed APIs or the explicit cdecl control.
                 result=ABI_MISMATCH_OBSERVED

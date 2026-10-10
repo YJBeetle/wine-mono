@@ -15,10 +15,7 @@ public static class BtlsProbe
     static extern IntPtr ParseDefault(IntPtr data, int length, int format);
     [DllImport(Library, EntryPoint="mono_btls_x509_free", CallingConvention=CallingConvention.Cdecl)]
     static extern void FreeCdecl(IntPtr certificate);
-    [DllImport("kernel32.dll", CharSet=CharSet.Unicode)]
-    static extern IntPtr GetModuleHandle(string module);
-
-    static void Managed(string data)
+    static void Managed(string data, string expectedData)
     {
         Type factory = typeof(HttpWebRequest).Assembly.GetType("Mono.Net.Security.MonoTlsProviderFactory", true);
         var method = factory.GetMethod("GetProvider", BindingFlags.Static | BindingFlags.NonPublic,
@@ -31,13 +28,15 @@ public static class BtlsProbe
         using (var certificate = new X509Certificate2(Convert.FromBase64String(data), ""))
         {
             Console.WriteLine("CERTIFICATE_CONSTRUCTOR_RETURNED");
-            // Thumbprint invokes CryptoConfig/file initialization on this old
-            // runtime. Keep that separate from this certificate ABI probe.
-            if (certificate.Subject != "CN=WineMonoBtlsProbe" || certificate.GetRawCertData().Length == 0)
-                throw new Exception("Unexpected certificate content");
-            Console.WriteLine("certificate-subject=" + certificate.Subject);
+            // Subject/OID lookup, Thumbprint and GetModuleHandle have independent
+            // Windows stdcall paths. Validate raw certificate bytes instead.
+            byte[] actual = certificate.GetRawCertData();
+            byte[] expected = Convert.FromBase64String(expectedData);
+            if (actual.Length != expected.Length) throw new Exception("Unexpected certificate size");
+            for (int i = 0; i < actual.Length; ++i)
+                if (actual[i] != expected[i]) throw new Exception("Unexpected certificate content");
+            Console.WriteLine("certificate-raw-bytes=" + actual.Length);
         }
-        if (GetModuleHandle(Library) == IntPtr.Zero) throw new Exception("Native BTLS not loaded");
     }
 
     static void Raw(string data, bool cdecl)
@@ -65,7 +64,7 @@ public static class BtlsProbe
         {
             if (args[0] == "native-cdecl" || args[0] == "native-default")
                 Raw(args[1], args[0] == "native-cdecl");
-            else Managed(args[1]);
+            else Managed(args[1], args[2]);
             Console.WriteLine("PROBE_PASS=" + args[0]);
             return 0;
         }

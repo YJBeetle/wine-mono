@@ -4,9 +4,16 @@ on:
   push:
     branches: [ codex/wine-mono-11.3.0-btls-regression ]
   workflow_dispatch:
+    inputs:
+      engine_run:
+        description: "Optional successful engine-build run to reuse (blank rebuilds)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build-test:
@@ -20,6 +27,7 @@ jobs:
     env:
       ENGINE_ARCH: ${{ matrix.architecture }}
       ENGINE_SOURCE: ${{ matrix.source }}
+      ENGINE_RUN: ${{ github.event_name == 'push' && '38078468319' || inputs.engine_run }}
     steps:
     - uses: actions/checkout@v4
     - name: Check out the isolated 11.3.0 source
@@ -42,10 +50,12 @@ jobs:
         printf 'source=%s\nrevision=%s\narchitecture=%s\n' "$ENGINE_SOURCE" "$revision" "$ENGINE_ARCH" > source-manifest.txt
         git -C mono diff --exit-code
     - name: Install build dependencies
+      if: env.ENGINE_RUN == ''
       run: |
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool-bin gettext cmake build-essential python3 pkg-config
     - name: Build the engine with BTLS enabled
+      if: env.ENGINE_RUN == ''
       shell: bash
       run: |
         set -euo pipefail
@@ -54,6 +64,29 @@ jobs:
         test -s "image/bin/libmono-2.0-${ENGINE_ARCH}.dll"
         git -C mono diff --exit-code
         sha256sum "image/bin/libmono-2.0-${ENGINE_ARCH}.dll" > engine-sha256.txt
+    - name: Download the previously verified engine build
+      if: env.ENGINE_RUN != ''
+      uses: actions/download-artifact@v4
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        run-id: ${{ env.ENGINE_RUN }}
+        name: btls-${{ matrix.source }}-${{ matrix.architecture }}-evidence
+        path: engine-cache
+    - name: Verify and reuse the immutable engine
+      if: env.ENGINE_RUN != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Test-only edits may reuse these engines; source and build flags may not.
+        git fetch --depth 1 origin 82f527dc0f278077a15e62a80367e079e93c302e
+        git diff --exit-code 82f527dc0f278077a15e62a80367e079e93c302e HEAD -- mono.make
+        cmp source-manifest.txt engine-cache/source-manifest.txt
+        grep -q '^#define HAVE_BTLS 1' "engine-cache/build/mono-${ENGINE_ARCH}/config.h"
+        (cd engine-cache && sha256sum -c engine-sha256.txt)
+        mkdir -p image/bin
+        cp "engine-cache/image/bin/libmono-2.0-${ENGINE_ARCH}.dll" image/bin/
+        cp engine-cache/engine-sha256.txt engine-sha256.txt
+        printf 'reused-engine-run=%s\n' "$ENGINE_RUN" > reused-engine.txt
     - name: Install test dependencies
       run: |
         sudo dpkg --add-architecture i386
@@ -75,6 +108,7 @@ jobs:
         path: |
           engine-build.log
           engine-sha256.txt
+          reused-engine.txt
           source-manifest.txt
           native-abi-inventory.txt
           regression-test.log

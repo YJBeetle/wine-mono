@@ -17,6 +17,16 @@ crashing in BCryptGenRandom during file/path initialization, before BTLS;
 the crypto and socket probes deliberately continue to cover those paths
 separately. Thumbprint is also excluded to avoid CryptoConfig/file lookup
 masking the certificate-parse result.
+The second run further isolated a CryptFindOIDInfo crash after successful
+certificate construction when reading Subject. Subject/OID lookup is now a
+separate probe; certificate tests validate the exact raw DER bytes, not
+Subject, Thumbprint or a Windows GetModuleHandle call.
+
+Push runs reuse the four engines built by run 38078468319: source manifests,
+binary hashes, BTLS configuration and unchanged mono.make are verified before
+reuse. Dispatch with a blank engine_run rebuilds from source. The failed
+overall run is not treated as a successful runtime gate: only its verified
+engine-build outputs are reused, and all API tests execute again.
 
 Each API is tested in its own process in JIT (none) and interpreter (interp)
 modes. A failed case does not skip later cases. Real API failures fail CI;
@@ -28,7 +38,7 @@ entry and a native-crash signature is never accepted as the ABI result.
 Scope: DER and PKCS#12 certificate parsing; direct native DER parsing with
 default vs explicit cdecl declarations; handle-based internal calls; a real
 Windows default-Winapi call; gzip round trip; hashing, RNG and AES round
-trip; XML; loopback TCP. This is not full TLS handshake, trust-policy,
+trip; XML; OID lookup; loopback TCP. This is not full TLS handshake, trust-policy,
 SOLIDWORKS, Toolbox, COM lifetime, or exhaustive class-library validation.
 
 The source inventory is a triage list, not proof of a defect: default Winapi

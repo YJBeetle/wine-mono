@@ -51,7 +51,9 @@ jobs:
         & $openssl pkcs12 -export -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 -inkey windows-btls-test/key.pem -in windows-btls-test/certificate.pem -out windows-btls-test/certificate.pfx -passout pass:
         if ($LASTEXITCODE -ne 0) { throw 'PFX generation failed' }
         Write-Host 'Compile the probe using Microsoft NET Framework csc'
-        & C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /nologo /platform:${{ matrix.architecture }} /out:windows-btls-test/probe.exe .github/fixtures/windows-btls/WindowsBtlsProbe.cs
+        $source = (Resolve-Path .github/fixtures/windows-btls/WindowsBtlsProbe.cs).Path
+        $output = Join-Path (Resolve-Path windows-btls-test).Path probe.exe
+        & C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /nologo /platform:${{ matrix.architecture }} "/out:$output" $source
         if ($LASTEXITCODE -ne 0) { throw 'Microsoft compiler failed' }
     - name: Run standard APIs and explicit Cdecl; observe default convention separately
       shell: pwsh

@@ -165,6 +165,9 @@ jobs:
         git -C mono diff --exit-code "$BTLS_FIXED_SOURCE" "$BTLS_TEST_SOURCE" -- . ':!mcs/class/System/Test/Mono.Btls/NativeCallingConventionTest.cs'
         git -C mono checkout --detach "$BTLS_TEST_SOURCE"
         git -C mono submodule update --init --depth 1 external/nunit-lite
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
     - name: Compare released, rebuilt-baseline and fixed System.dll
       shell: bash
       run: |

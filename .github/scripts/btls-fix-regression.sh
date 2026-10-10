@@ -24,8 +24,11 @@ mcs -platform:"$platform" -out:"$root/btls.exe" .github/fixtures/btls/BtlsProbe.
 mcs -platform:"$platform" -r:System.Core -r:System.Xml -out:"$root/runtime.exe" .github/fixtures/btls/RuntimeProbe.cs
 # Compile the repository's real NUnitLite and the exact upstream unit fixture,
 # rather than replacing assertions with a stub or relying on distro NUnit APIs.
+csc=$(dotnet --list-sdks | awk '$1 ~ /^8\./ {v=$1; gsub(/[\[\]]/, "", $2); p=$2} END {print p "/" v "/Roslyn/bincore/csc.dll"}')
+test -s "$csc"
 (cd mono/mcs/tools/nunit-lite/NUnitLite &&
- mcs -target:library -r:System.Core -r:System.Xml \
+ dotnet "$csc" -nologo -target:library -nostdlib+ \
+     -r:/usr/lib/mono/4.5/{mscorlib,System,System.Core,System.Xml}.dll \
      -define:__MOBILE__,TRACE,DEBUG,NET_4_0,CLR_4_0,NUNITLITE \
      -out:"$root/nunitlite.dll" @nunitlite.dll.sources)
 mcs -platform:"$platform" -r:"$root/nunitlite.dll" -out:"$root/unit.exe" \

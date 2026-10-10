@@ -39,7 +39,12 @@ jobs:
         set -o pipefail
         make -j2 "libmono-2.0-${ENGINE_ARCH}.dll" 2>&1 | tee engine-build.log
         test -s "image/bin/libmono-2.0-${ENGINE_ARCH}.dll"
-        grep -q '^#define HAVE_BTLS 1' "build/mono-${ENGINE_ARCH}/config.h"
+        test -s "build/mono-${ENGINE_ARCH}/config.h"
+        if [ "$ENGINE_ARCH" = x86_64 ]; then
+          grep -q '^#define HAVE_BTLS 1' "build/mono-${ENGINE_ARCH}/config.h"
+        else
+          ! grep -q '^#define HAVE_BTLS 1' "build/mono-${ENGINE_ARCH}/config.h"
+        fi
         git diff --exit-code --submodule=diff
         git -C mono diff --exit-code
         sha256sum "image/bin/libmono-2.0-${ENGINE_ARCH}.dll" > engine-sha256.txt
@@ -99,7 +104,7 @@ jobs:
       run: |
         set -o pipefail
         xvfb-run -a bash .github/scripts/x86-regression.sh 2>&1 | tee regression-test.log
-    - name: Verify CCW lifetime and BTLS under Wine
+    - name: Verify CCW lifetime and preserved x64 BTLS under Wine
       shell: bash
       run: |
         set -o pipefail

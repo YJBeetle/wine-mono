@@ -27,16 +27,23 @@ done
 LC_ALL=C comm -23 "$test_root/baseline-exports.txt" "$test_root/candidate-exports.txt" > "$test_root/missing-exports.txt"
 test ! -s "$test_root/missing-exports.txt"
 mcs -platform:"$platform" -out:"$test_root/ccw.exe" .github/fixtures/ccw-release/ReleaseProbe.cs
-mcs -platform:"$platform" -out:"$test_root/btls.exe" .github/fixtures/ccw-release/BtlsProbe.cs
-openssl req -x509 -newkey rsa:2048 -nodes -keyout "$test_root/key.pem" -out "$test_root/certificate.pem" -days 1 -subj '/CN=WineMonoCCWLocalProbe'
-openssl x509 -in "$test_root/certificate.pem" -outform DER -out "$test_root/certificate.der"
+if [ "$architecture" = x86_64 ]; then
+    mcs -platform:"$platform" -out:"$test_root/btls.exe" .github/fixtures/ccw-release/BtlsProbe.cs
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$test_root/key.pem" -out "$test_root/certificate.pem" -days 1 -subj '/CN=WineMonoCCWLocalProbe'
+    openssl x509 -in "$test_root/certificate.pem" -outform DER -out "$test_root/certificate.der"
+    printf '%s\n' 'BTLS=x64-enabled-preserved' > "$test_root/btls-scope.txt"
+else
+    printf '%s\n' 'BTLS=x86-disabled-v3-baseline; x86 BTLS investigation deferred' > "$test_root/btls-scope.txt"
+fi
 export WINEPREFIX="$test_root/prefix"
 export WINEARCH=win64 WINEDEBUG=-all
 WINEDLLOVERRIDES='mscoree,mshtml=' timeout -k 5 120 wine wineboot -u
 wine reg add 'HKCU\Software\Wine\Mono' /v RuntimePath /t REG_SZ /d "$(winepath -w "$runtime")" /f
 exe=$(winepath -w "$test_root/ccw.exe")
-btls_exe=$(winepath -w "$test_root/btls.exe")
-certificate=$(winepath -w "$test_root/certificate.der")
+if [ "$architecture" = x86_64 ]; then
+    btls_exe=$(winepath -w "$test_root/btls.exe")
+    certificate=$(winepath -w "$test_root/certificate.der")
+fi
 printf 'variant\tmode\texit\tresult\n' > "$test_root/summary.txt"
 for variant in baseline candidate; do
     wineserver -k || true
@@ -65,10 +72,13 @@ for variant in baseline candidate; do
             grep -Fxq CCW_RELEASE_PROBE_PASS "$log.normalized"
             ! grep -Eq 'Assertion at|Unhandled Exception|Native Crash Reporting' "$log.normalized"
             outcome=PASS
-            btls_log="$test_root/btls-$mode.log"
-            WINE_MONO_AOT="$mode" timeout -k 5 60 wine "$btls_exe" "$certificate" > "$btls_log" 2>&1
-            cat "$btls_log"
-            tr -d '\r' < "$btls_log" | grep -Fxq MONO_BTLS_PROBE_PASS
+            if [ "$architecture" = x86_64 ]; then
+                btls_log="$test_root/btls-$mode.log"
+                WINE_MONO_AOT="$mode" timeout -k 5 60 wine "$btls_exe" "$certificate" > "$btls_log" 2>&1
+                cat "$btls_log"
+                tr -d '\r' < "$btls_log" | grep -Fxq MONO_BTLS_PROBE_PASS
+                ! grep -Eq 'Assertion at|Unhandled Exception|Native Crash Reporting' "$btls_log"
+            fi
         fi
         printf '%s\t%s\t%s\t%s\n' "$variant" "$mode" "$code" "$outcome" >> "$test_root/summary.txt"
         wineserver -k || true
@@ -76,4 +86,5 @@ for variant in baseline candidate; do
     done
 done
 cat "$test_root/summary.txt"
+cat "$test_root/btls-scope.txt"
 echo CCW_WINE_MATRIX_PASS

@@ -9,6 +9,10 @@ MONO_LIBNATIVE_SRCS=$(shell $(SRCDIR)/tools/git-updated-files $(SRCDIR)/mono/mon
 
 SYSCONFIG_TESTDIR=$(SRCDIR)/mono/mcs/class/System.Configuration/Test/standalone
 
+# Preserve the v3 x86 configuration. The x64 engine retains the icalls used by
+# its separately shipped BTLS library; x86 BTLS support is outside this release.
+MONO_ENGINE_CONFIGURE_FLAGS_x86_64 = --enable-btls --disable-btls-lib
+
 $(SRCDIR)/mono/configure: $(SRCDIR)/mono/autogen.sh $(SRCDIR)/mono/configure.ac $(MONO_MAKEFILES)
 	cd $(SRCDIR)/mono; NOCONFIGURE=yes ./autogen.sh
 
@@ -21,8 +25,7 @@ endif
 # libmono dll's
 $$(BUILDDIR)/mono-$(1)/Makefile: $$(SRCDIR)/mono/configure $$(SRCDIR)/mono.make $$(BUILDDIR)/.dir $$(MINGW_DEPS)
 	mkdir -p $$(@D)
-	# The BTLS library is built separately below; the engine must still expose its icalls.
-	cd $$(BUILDDIR)/mono-$(1); $$(MINGW_ENV) CFLAGS="$$(PDB_CFLAGS_$(1)) $$$${CFLAGS:--g -O2}" CXXFLAGS="$$(PDB_CFLAGS_$(1)) $$$${CXXFLAGS:--g -O2}" LDFLAGS="$$(PDB_LDFLAGS_$(1))" $$(SRCDIR_ABS)/mono/configure --prefix="$$(BUILDDIR_ABS)/build-cross-$(1)-install" --build=$$(shell $$(SRCDIR)/mono/config.guess) --target=$$(MINGW_$(1)) --host=$$(MINGW_$(1)) --with-tls=none --enable-btls --disable-btls-lib --disable-mcs-build --enable-win32-dllmain=yes --with-libgc-threads=win32 PKG_CONFIG=false mono_cv_clang=no --disable-boehm mono_feature_disable_cleanup=yes
+	cd $$(BUILDDIR)/mono-$(1); $$(MINGW_ENV) CFLAGS="$$(PDB_CFLAGS_$(1)) $$$${CFLAGS:--g -O2}" CXXFLAGS="$$(PDB_CFLAGS_$(1)) $$$${CXXFLAGS:--g -O2}" LDFLAGS="$$(PDB_LDFLAGS_$(1))" $$(SRCDIR_ABS)/mono/configure --prefix="$$(BUILDDIR_ABS)/build-cross-$(1)-install" --build=$$(shell $$(SRCDIR)/mono/config.guess) --target=$$(MINGW_$(1)) --host=$$(MINGW_$(1)) --with-tls=none $$(MONO_ENGINE_CONFIGURE_FLAGS_$(1)) --disable-mcs-build --enable-win32-dllmain=yes --with-libgc-threads=win32 PKG_CONFIG=false mono_cv_clang=no --disable-boehm mono_feature_disable_cleanup=yes
 	sed -e 's/-lgcc_s//' -i $$(BUILDDIR)/mono-$(1)/libtool
 
 $$(BUILDDIR)/mono-$(1)/mono/%/.built: $$(BUILDDIR)/mono-$(1)/Makefile $$(MONO_MONO_SRCS)

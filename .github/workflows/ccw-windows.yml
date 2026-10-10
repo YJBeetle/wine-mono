@@ -1,0 +1,40 @@
+name: CCW native Windows CLR comparison
+
+on:
+  push:
+    branches: [ codex/wine-mono-11.3.0-ccw-release ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  framework-comparison:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare x86 and x64 .NET Framework CCW behavior
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path evidence | Out-Null
+          $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          foreach ($arch in @('x86', 'x64')) {
+            $exe = Join-Path $PWD "evidence\ccw-$arch.exe"
+            & $compiler /nologo /target:exe "/platform:$arch" "/out:$exe" '.github\fixtures\ccw-release\ReleaseProbe.cs'
+            if ($LASTEXITCODE -ne 0) { throw "Compile failed: $arch" }
+            $output = & $exe 2>&1
+            $code = $LASTEXITCODE
+            $output | Set-Content "evidence\framework-$arch.log"
+            $output | Write-Output
+            if ($code -ne 0 -or -not ($output -contains 'CCW_RELEASE_PROBE_PASS')) {
+              throw "Native .NET Framework comparison failed: $arch"
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ccw-native-framework-evidence
+          path: evidence/*.log
+          if-no-files-found: error

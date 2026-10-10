@@ -18,6 +18,8 @@ cp build/image-support/Microsoft.NET/Framework64/v4.0.30319/regasm.exe "$test_ro
 mcs -platform:x86 -out:"$test_root/verifier-x86.exe" .github/fixtures/registration-services/RegistrationVerifier.cs
 mcs -platform:x64 -out:"$test_root/verifier-x86_64.exe" .github/fixtures/registration-services/RegistrationVerifier.cs
 cp "$candidate_mscorlib" "$runtime_root/lib/mono/4.5/mscorlib.dll"
+cp image/bin/libmono-2.0-x86.dll "$runtime_root/bin/libmono-2.0-x86.dll"
+cp image/bin/libmono-2.0-x86_64.dll "$runtime_root/bin/libmono-2.0-x86_64.dll"
 cp "$candidate_engine" "$runtime_root/bin/libmono-2.0-x86.dll"
 
 export WINEPREFIX="$test_root/prefix"

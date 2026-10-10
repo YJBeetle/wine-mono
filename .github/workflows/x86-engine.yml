@@ -1,8 +1,8 @@
-name: x86 engine stdcall candidate
+name: Shared x86 and x64 engine candidate
 
 on:
   push:
-    branches: [ codex/wine-mono-11.3.0-x86-stdcall-com-registration ]
+    branches: [ codex/wine-mono-11.3.0-ccw-release ]
   workflow_dispatch:
 
 permissions:
@@ -12,11 +12,17 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x86_64]
+    env:
+      ENGINE_ARCH: ${{ matrix.architecture }}
     steps:
     - uses: actions/checkout@v4
     - name: Check out the candidate engine
       run: |
-        test "$(git rev-parse HEAD:mono)" = 04226a35017ea035f09a109a728490055d1493f6
+        test "$(git rev-parse HEAD:mono)" = edc3bfecdcb5c1c4705bdc9b82257d1d35143f06
         git submodule init mono
         git config submodule.mono.url https://github.com/YJBeetle/mono.git
         git submodule update --init --depth 1 mono
@@ -27,31 +33,33 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y autoconf automake libtool-bin gettext cmake build-essential python3 pkg-config
-    - name: Build the candidate x86 engine
+    - name: Build the candidate engine
       shell: bash
       run: |
         set -o pipefail
-        make -j2 libmono-2.0-x86.dll 2>&1 | tee x86-engine-build.log
-        test -s image/bin/libmono-2.0-x86.dll
+        make -j2 "libmono-2.0-${ENGINE_ARCH}.dll" 2>&1 | tee engine-build.log
+        test -s "image/bin/libmono-2.0-${ENGINE_ARCH}.dll"
+        grep -q '^#define HAVE_BTLS 1' "build/mono-${ENGINE_ARCH}/config.h"
         git diff --exit-code --submodule=diff
         git -C mono diff --exit-code
-        sha256sum image/bin/libmono-2.0-x86.dll > x86-engine-sha256.txt
+        sha256sum "image/bin/libmono-2.0-${ENGINE_ARCH}.dll" > engine-sha256.txt
     - name: Upload engine
       uses: actions/upload-artifact@v4
       with:
-        name: mono-11.3.0-x86-stdcall
+        name: mono-11.3.0-${{ matrix.architecture }}-ccw
         if-no-files-found: error
         path: |
-          image/bin/libmono-2.0-x86.dll
-          image/bin/libmono-2.0-x86.pdb
-          image/bin/libmono-2.0-x86.dbg
-          x86-engine-sha256.txt
+          image/bin/libmono-2.0-${{ matrix.architecture }}.dll
+          image/bin/libmono-2.0-${{ matrix.architecture }}.pdb
+          image/bin/libmono-2.0-${{ matrix.architecture }}.dbg
+          engine-sha256.txt
     - name: Install regression test dependencies
       run: |
         sudo dpkg --add-architecture i386
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends wine wine32:i386 wine64 xvfb xauth mono-mcs
-    - name: Build the upstream regression test
+    - name: Build the upstream x86 regression test
+      if: matrix.architecture == 'x86'
       shell: bash
       run: |
         set -o pipefail
@@ -67,6 +75,7 @@ jobs:
         sha256sum regression/baseline-x86.dll image/bin/libmono-2.0-x86.dll > regression/engine-checksums.log
         printf '%s\n' "$PWD/$mono_root" > regression/runtime-path.txt
     - name: Verify Wine Mono export compatibility
+      if: matrix.architecture == 'x86'
       shell: bash
       run: |
         set -o pipefail
@@ -85,15 +94,31 @@ jobs:
         cat regression/missing-exports.log
         test ! -s regression/missing-exports.log
     - name: Run internal-call and P/Invoke regressions under Wine
+      if: matrix.architecture == 'x86'
       shell: bash
       run: |
         set -o pipefail
         xvfb-run -a bash .github/scripts/x86-regression.sh 2>&1 | tee regression-test.log
+    - name: Verify CCW lifetime and BTLS under Wine
+      shell: bash
+      run: |
+        set -o pipefail
+        xvfb-run -a bash .github/scripts/ccw-release.sh "$ENGINE_ARCH" 2>&1 | tee ccw-test.log
+    - name: Upload CCW evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ccw-${{ matrix.architecture }}-evidence
+        if-no-files-found: error
+        path: |
+          ccw-test.log
+          ccw-test/*.log
+          ccw-test/*.txt
     - name: Upload regression logs
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: x86-regression-logs
+        name: ${{ matrix.architecture }}-regression-logs
         path: |
           regression-build.log
           regression-test.log
@@ -102,7 +127,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: x86-engine-build-logs
+        name: ${{ matrix.architecture }}-engine-build-logs
         path: |
-          x86-engine-build.log
-          build/mono-x86/config.log
+          engine-build.log
+          build/mono-${{ matrix.architecture }}/config.log

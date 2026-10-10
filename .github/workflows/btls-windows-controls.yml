@@ -46,7 +46,9 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'Certificate generation failed' }
         & $openssl x509 -in windows-btls-test/certificate.pem -outform DER -out windows-btls-test/certificate.der
         if ($LASTEXITCODE -ne 0) { throw 'DER conversion failed' }
-        & $openssl pkcs12 -export -legacy -inkey windows-btls-test/key.pem -in windows-btls-test/certificate.pem -out windows-btls-test/certificate.pfx -passout pass:
+        # Compatibility fixture for NET Framework; do not depend on Git's
+        # optional legacy provider or its MSYS-only default module directory.
+        & $openssl pkcs12 -export -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 -inkey windows-btls-test/key.pem -in windows-btls-test/certificate.pem -out windows-btls-test/certificate.pfx -passout pass:
         if ($LASTEXITCODE -ne 0) { throw 'PFX generation failed' }
         Write-Host 'Compile the probe using Microsoft NET Framework csc'
         & C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /nologo /platform:${{ matrix.architecture }} /out:windows-btls-test/probe.exe .github/fixtures/windows-btls/WindowsBtlsProbe.cs
